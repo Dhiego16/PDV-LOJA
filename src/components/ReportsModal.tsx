@@ -1,7 +1,9 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import type { Sale } from '../types';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { X, TrendingUp, DollarSign, Calendar } from 'lucide-react';
+import { X, TrendingUp, DollarSign, Calendar, Sparkles, Loader2 } from 'lucide-react';
+import { GoogleGenAI } from "@google/genai";
+import { Button } from './ui/Button';
 
 interface ReportsModalProps {
   sales: Sale[];
@@ -9,6 +11,9 @@ interface ReportsModalProps {
 }
 
 export const ReportsModal: React.FC<ReportsModalProps> = ({ sales, onClose }) => {
+  const [analysis, setAnalysis] = useState<string>('');
+  const [loadingAi, setLoadingAi] = useState(false);
+
   const stats = useMemo(() => {
     const totalRevenue = sales.reduce((acc, sale) => acc + sale.total, 0);
     const totalSales = sales.length;
@@ -26,6 +31,44 @@ export const ReportsModal: React.FC<ReportsModalProps> = ({ sales, onClose }) =>
     return { totalRevenue, totalSales, avgTicket, paymentData };
   }, [sales]);
 
+  const handleAiAnalysis = async () => {
+    if (sales.length === 0) {
+      setAnalysis("Não há dados suficientes para análise.");
+      return;
+    }
+
+    setLoadingAi(true);
+    setAnalysis('');
+
+    try {
+      // Prepare a lightweight summary for the AI to save tokens and speed up
+      const salesSummary = sales.slice(-50).map(s => ({
+        date: s.date,
+        items: s.items.map(i => `${i.qty}x ${i.name} (${i.category})`).join(', '),
+        total: s.total,
+        method: s.paymentMethod
+      }));
+
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: `Atue como um consultor especialista em varejo para uma loja pequena de variedades. 
+        Analise estes dados recentes de vendas (JSON abaixo) e forneça 3 insights curtos e estratégicos em português (pt-BR).
+        Foque em: O que está vendendo bem? Qual o comportamento de pagamento? Uma sugestão para vender mais.
+        Use formatação Markdown simples. Seja direto.
+        
+        Dados: ${JSON.stringify(salesSummary)}`,
+      });
+
+      setAnalysis(response.text || "Não foi possível gerar a análise.");
+    } catch (error) {
+      console.error(error);
+      setAnalysis("Erro ao conectar com a Inteligência Artificial. Verifique sua chave de API.");
+    } finally {
+      setLoadingAi(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
       <div className="w-full max-w-4xl h-[90vh] bg-gray-50 dark:bg-dark-bg rounded-2xl shadow-2xl overflow-hidden flex flex-col">
@@ -42,6 +85,38 @@ export const ReportsModal: React.FC<ReportsModalProps> = ({ sales, onClose }) =>
         </div>
 
         <div className="flex-1 overflow-y-auto p-8">
+          {/* AI Analysis Section */}
+          <div className="mb-8 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 p-6 rounded-xl border border-indigo-100 dark:border-indigo-800">
+            <div className="flex justify-between items-start mb-4">
+              <div className="flex items-center gap-2 text-indigo-700 dark:text-indigo-300">
+                <Sparkles size={20} />
+                <h3 className="font-bold">Consultor Inteligente (Gemini)</h3>
+              </div>
+              <Button 
+                onClick={handleAiAnalysis} 
+                disabled={loadingAi}
+                size="sm"
+                className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2"
+              >
+                {loadingAi ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                {loadingAi ? 'Analisando...' : 'Gerar Análise'}
+              </Button>
+            </div>
+            
+            {analysis && (
+              <div className="prose dark:prose-invert max-w-none text-sm bg-white/50 dark:bg-black/20 p-4 rounded-lg animate-in fade-in duration-500">
+                <div className="whitespace-pre-line leading-relaxed text-gray-800 dark:text-gray-200">
+                  {analysis}
+                </div>
+              </div>
+            )}
+            {!analysis && !loadingAi && (
+              <p className="text-sm text-gray-500 dark:text-gray-400 italic">
+                Clique no botão para receber insights sobre suas vendas, tendências e dicas para lucrar mais.
+              </p>
+            )}
+          </div>
+
           {/* KPI Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <div className="bg-white dark:bg-dark-surface p-6 rounded-xl shadow-sm border border-gray-100 dark:border-dark-border">
