@@ -222,6 +222,57 @@ const App: React.FC = () => {
       setIsSuspendedOpen(false);
   };
 
+  // --- Backup Functions ---
+  const handleExportData = () => {
+    const data = {
+      version: 1,
+      timestamp: new Date().toISOString(),
+      products,
+      sales,
+      suspended,
+      settings
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `backup-ls-pdv-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportData = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!window.confirm('ATENÇÃO: Importar um backup irá substituir TODOS os dados atuais (estoque, vendas, configurações). Deseja continuar?')) {
+        e.target.value = ''; // Reset input
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = JSON.parse(event.target?.result as string);
+        
+        // Basic validation
+        if (!data.timestamp) throw new Error("Arquivo de backup inválido.");
+
+        if (data.products) setProducts(data.products);
+        if (data.sales) setSales(data.sales);
+        if (data.suspended) setSuspended(data.suspended);
+        if (data.settings) setSettings(data.settings);
+        
+        alert('Backup restaurado com sucesso! A página será recarregada.');
+        window.location.reload();
+      } catch (err) {
+        console.error(err);
+        alert('Erro ao restaurar backup. Verifique se o arquivo está correto.');
+      }
+    };
+    reader.readAsText(file);
+  };
+
   // --- Keyboard Shortcuts ---
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -596,6 +647,8 @@ const App: React.FC = () => {
           settings={settings}
           onSave={(newSettings) => setSettings(newSettings)}
           onClose={() => setIsSettingsOpen(false)}
+          onExport={handleExportData}
+          onImport={handleImportData}
         />
       )}
 
